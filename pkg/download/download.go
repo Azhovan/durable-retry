@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/azhovan/durable-retry/pkg/logger"
+	"github.com/azhovan/durable-resume/pkg/logger"
 )
 
 // Downloader is a struct that handles downloading files from a source URL to a destination URL.
@@ -49,7 +49,7 @@ func NewDownloader(dst, src string, options ...DownloaderOption) (*Downloader, e
 		return nil, err
 	}
 
-	client, err := NewClient(srcURL)
+	client, err := NewClient()
 	if err != nil {
 		return nil, err
 	}
@@ -95,25 +95,15 @@ func (dl *Downloader) UpdateRangeSupportState(response *http.Response) {
 // CheckRangeSupport checks if the server supports range requests by making a test request.
 // It returns true if range requests are supported, false otherwise, along with an error if the check fails.
 func (dl *Downloader) CheckRangeSupport(ctx context.Context, callback ResponseCallback) (bool, error) {
-	dl.logger.Debug("initializing server range request check",
-		slog.Group("req",
-			slog.String("url", dl.sourceURL.String()),
-			slog.String("range", "bytes=0-49"),
-		))
+	dl.logger.Debug("init server range request check", slog.Group("req", slog.String("url", dl.sourceURL.String())))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dl.sourceURL.String(), http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, dl.sourceURL.String(), http.NoBody)
 	if err != nil {
 		dl.logger.Debug("creating range request failed",
 			slog.String("error", err.Error()),
 		)
 		return false, fmt.Errorf("creating range request: %v", err)
 	}
-	// The Range header specifies a subset of a resource to fetch, instead of retrieving the entire resource.
-	// In here, we use the Range header to request a specific part of the file, aiming to retrieve only
-	// a portion of its content. This serves to confirm that the server correctly handles requests for partial content.
-	// The range "bytes=0-49" requests the first 50 bytes of the file. This specific range is chosen arbitrarily
-	// for testing purposes; any other valid range would also be appropriate for this test.
-	req.Header.Set("Range", "bytes=0-49")
 
 	// apply auth method if it's been set
 	if dl.client.auth != nil {
@@ -130,17 +120,17 @@ func (dl *Downloader) CheckRangeSupport(ctx context.Context, callback ResponseCa
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
-	if resp.StatusCode == http.StatusPartialContent {
-		if callback != nil {
-			dl.logger.Debug("executing range support callback")
-			callback(resp)
-			dl.logger.Debug("executing range support callback completed")
-		}
-
-		dl.logger.Debug("server range request check finished", slog.Bool("supported", true))
-		return true, nil
+	if resp.StatusCode != http.StatusOK {
+		dl.logger.Debug("server range request check finished", slog.Bool("supported", false))
+		return false, ErrRangeRequestNotSupported
 	}
 
-	dl.logger.Debug("server range request check finished", slog.Bool("supported", false))
-	return false, ErrRangeRequestNotSupported
+	if callback != nil {
+		dl.logger.Debug("executing range support callback")
+		callback(resp)
+		dl.logger.Debug("executing range support callback completed")
+	}
+
+	dl.logger.Debug("server range request check finished", slog.Bool("supported", true))
+	return true, nil
 }

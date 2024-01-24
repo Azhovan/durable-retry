@@ -3,12 +3,10 @@ package download
 import (
 	"errors"
 	"net/http"
-	"net/url"
 )
 
 type Client struct {
 	// url is not meant to be modified directly, hence embedded.
-	url        *url.URL
 	httpClient *http.Client
 
 	auth AuthStrategy
@@ -16,17 +14,11 @@ type Client struct {
 
 var (
 	ErrRangeRequestNotSupported = errors.New("server doesn't support range request")
-	ErrInvalidURL               = errors.New("the client url is empty or invalid")
 )
 
 // NewClient creates a new instance of the Client struct with the provided server URL and options.
-func NewClient(url *url.URL, options ...ClientOption) (*Client, error) {
-	if url.String() == "" {
-		return nil, ErrInvalidURL
-	}
-
+func NewClient(options ...ClientOption) (*Client, error) {
 	client := &Client{
-		url:        url,
 		httpClient: http.DefaultClient,
 	}
 
