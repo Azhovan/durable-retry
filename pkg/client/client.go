@@ -81,7 +81,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // CheckServerRangeRequest checks if the server supports range requests by making a test request.
 // If the range request cannot be created, an error is returned.
 func (c *Client) CheckServerRangeRequest(ctx context.Context) (bool, error) {
-	c.Logger.Debug("Initializing server range request check",
+	c.Logger.Debug("initializing server range request check",
 		slog.Group("req",
 			slog.String("url", c.url.String()),
 			slog.String("range", "bytes=0-49"),
@@ -89,6 +89,9 @@ func (c *Client) CheckServerRangeRequest(ctx context.Context) (bool, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url.String(), http.NoBody)
 	if err != nil {
+		c.Logger.Debug("creating range request failed",
+			slog.String("error", err.Error()),
+		)
 		return false, fmt.Errorf("creating range request: %v", err)
 	}
 	// The Range header specifies a subset of a resource to fetch, instead of retrieving the entire resource.
@@ -100,26 +103,19 @@ func (c *Client) CheckServerRangeRequest(ctx context.Context) (bool, error) {
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		c.Logger.Debug("CheckServerRangeRequest failed",
-			slog.Group("req",
-				slog.String("method", req.Method),
-				slog.String("url", req.URL.String()),
-			),
+		c.Logger.Debug("making range request failed",
+			slog.String("error", err.Error()),
+			slog.Group("req", slog.String("method", req.Method), slog.String("url", req.URL.String())),
 		)
 		return false, fmt.Errorf("making range request: %v", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusPartialContent {
+		c.Logger.Debug("server range request check finished", slog.Bool("supported", true))
 		return true, nil
 	}
 
-	c.Logger.Debug("CheckServerRangeRequest failed",
-		slog.Group("req",
-			slog.String("method", req.Method),
-			slog.String("url", req.URL.String()),
-			slog.Int("statuscode", res.StatusCode),
-		),
-	)
+	c.Logger.Debug("server range request check finished", slog.Bool("supported", false))
 	return false, ErrRangeRequestNotSupported
 }
