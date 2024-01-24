@@ -34,6 +34,18 @@ type Downloader struct {
 
 	// Optional logger for logging debug and error information.
 	logger *slog.Logger
+
+	// segments is a map where each key represents a segment index, and each value is a Segment struct.
+	// Each Segment struct contains a slice of bytes representing a part of the file being downloaded.
+	//
+	// The number of segments controls the concurrency level of the download process.
+	// By default, the concurrency level is set to two, allowing two parts of the file to be downloaded simultaneously.
+	// This concurrency level can be adjusted to optimize download speed or to comply with server limitations.
+	// When set to one, the downloader performs a standard, non-segmented download using a single goroutine.
+	// If the server does not support segmented streaming, the downloader automatically falls back to this mode.
+	//
+	// TODO(azhovan): consider dynamic adjustment of segment size
+	segments map[int]Segment
 }
 
 // NewDownloader initializes a new instance of Downloader with the provided source and destination URLs.
