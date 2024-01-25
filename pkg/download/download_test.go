@@ -29,4 +29,10 @@ func TestNewDownloader(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("DownloadFile", func(t *testing.T) {
+		dl, err := NewDownloader("/tmp", "https://httpbin.org/range/1024", WithNumberOfSegments(4))
+		assert.NoError(t, err)
+
+	})
 }

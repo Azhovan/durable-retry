@@ -5,8 +5,10 @@ import (
 	"os"
 )
 
+// Segment represents a part of the file being downloaded.
+// It contains the data and state for a specific portion (segment) of the file.
 type Segment struct {
-	// segment identifier
+	// id uniquely identifies the segment.
 	id int
 
 	// start indicates the starting byte of the segment within the file.
@@ -32,6 +34,10 @@ type Segment struct {
 	// buffer is used to temporarily store data for this segment before writing to the file.
 	// It helps in efficient writing by reducing the number of write operations.
 	buffer *bufio.Writer
+
+	// segmentFile is a temporary file used for storing the data of this segment.
+	// It acts as a physical storage for the data being buffered.
+	segmentFile *os.File
 }
 
 // NewSegment creates a new instance of a Segment struct.
@@ -52,11 +58,33 @@ func NewSegment(id int, start, end, maxSegmentSize int64) (*Segment, error) {
 		start:          start,
 		end:            end,
 		maxSegmentSize: maxSegmentSize,
-		done:           false,
 		buffer:         bufio.NewWriterSize(file, bufferSize),
 	}, nil
 }
 
 func (seg *Segment) Write(data []byte) (int, error) {
 	return seg.buffer.Write(data)
+}
+
+func (seg *Segment) Flush() error {
+	return seg.buffer.Flush()
+}
+
+func (seg *Segment) Close() error {
+	return seg.segmentFile.Close()
+}
+
+func (seg *Segment) setErr(err error) {
+	if err != nil {
+		seg.err = err
+	}
+}
+
+func (seg *Segment) setDone(b bool) error {
+	if b == false || seg.err != nil {
+		return seg.err
+	}
+
+	seg.done = b
+	return seg.Flush()
 }
