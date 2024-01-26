@@ -37,10 +37,10 @@ func TestNewDownloader(t *testing.T) {
 			Level: slog.LevelDebug,
 		})
 
-		wd, err := os.Getwd()
-		assert.NoError(t, err)
+		// wd, err := os.Getwd()
+		// assert.NoError(t, err)
 
-		dl, err := NewDownloader(wd,
+		dl, err := NewDownloader("./",
 			"https://httpbin.org/range/1024",
 			WithLogger(log),
 			WithNumberOfSegments(5),

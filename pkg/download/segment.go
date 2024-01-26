@@ -2,6 +2,7 @@ package download
 
 import (
 	"bufio"
+	"io"
 	"os"
 )
 
@@ -43,23 +44,25 @@ type Segment struct {
 // NewSegment creates a new instance of a Segment struct.
 // It initializes a segment of a file to be downloaded, with specified start and end byte positions.
 // The caller is responsible for managing the temporary file, including its deletion after the segment is processed.
-func NewSegment(id int, start, end, maxSegmentSize int64) (*Segment, error) {
-	// Create a temporary file for the segment's data.
-	file, err := os.CreateTemp("", "-")
-	if err != nil {
-		return nil, err
-	}
-
+func NewSegment(id int, start, end, maxSegmentSize int64, writer io.Writer) (*Segment, error) {
 	// The buffer size is set to half of maxSegmentSize, providing a balance between memory use and disk I/O.
-	bufferSize := int(maxSegmentSize / 2)
-
 	return &Segment{
 		id:             id,
 		start:          start,
 		end:            end,
 		maxSegmentSize: maxSegmentSize,
-		buffer:         bufio.NewWriterSize(file, bufferSize),
+		buffer:         bufio.NewWriterSize(writer, int(maxSegmentSize)),
 	}, nil
+}
+
+// NewFileWriter creates a new temporary file in the specified directory with the given name pattern.
+// It returns a pointer to the created os.File and any error encountered during the file creation process.
+func NewFileWriter(dir, name string) (*os.File, error) {
+	file, err := os.CreateTemp(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
 func (seg *Segment) Write(data []byte) (int, error) {

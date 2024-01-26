@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 
 	"github.com/azhovan/durable-resume/pkg/logger"
@@ -16,11 +17,14 @@ import (
 // Downloader is a struct that handles downloading files from a source URL to a destination URL.
 // It utilizes a custom HTTP client for making requests and supports various configuration options.
 type Downloader struct {
+	// fileName represents the downloaded file name.
+	fileName string
+
 	// Source URL of the file to be downloaded.
 	sourceURL *url.URL
 
 	// Destination URL where the file will be saved.
-	destinationURL *url.URL
+	destinationDIR *url.URL
 
 	// rangeSupport provides information about the server's capabilities regarding range requests.
 	rangeSupport RangeSupport
@@ -109,7 +113,7 @@ func NewDownloader(dst, src string, options ...DownloaderOption) (*Downloader, e
 
 	dl := &Downloader{
 		sourceURL:      srcURL,
-		destinationURL: dstURL,
+		destinationDIR: dstURL,
 		client:         client,
 		logger:         logger.DefaultLogger(),
 		segmentManager: SegmentManager{
@@ -164,6 +168,13 @@ func WithNumberOfSegments(count int) DownloaderOption {
 func WithSegmentSize(size int64) DownloaderOption {
 	return func(dl *Downloader) {
 		dl.segmentManager.SegmentSize = size
+	}
+}
+
+// WithFileName is an option function for configuring the name of downloaded file.
+func WithFileName(name string) DownloaderOption {
+	return func(dl *Downloader) {
+		dl.fileName = name
 	}
 }
 
@@ -227,7 +238,6 @@ func (dl *Downloader) ValidateRangeSupport(ctx context.Context, callback Respons
 
 func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallback) error {
 	dl.logger.Debug("range request validation started")
-
 	if err := dl.ValidateRangeSupport(ctx, callback); err != nil {
 		dl.logger.Debug("file download failed",
 			slog.Group("req", slog.String("url", dl.sourceURL.String())),
@@ -235,8 +245,12 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 
 		return err
 	}
-
 	dl.logger.Debug("range request validation finished")
+
+	// if filename is not provided, use tha last part of path in url
+	if dl.fileName == "" {
+		dl.fileName = path.Base(dl.sourceURL.String())
+	}
 
 	// range request is supported, adjust the number of segments dynamically
 	if dl.rangeSupport.SupportsRangeRequests {
@@ -281,11 +295,20 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 			}
 		}
 
-		// create a new segment
-		segment, err := NewSegment(i, start, end, segmentSize)
+		// create a new temporary file for each segment,
+		fileWriter, err := NewFileWriter(
+			dl.destinationDIR.String(),
+			fmt.Sprintf("%s-part-%d-*", dl.fileName, i),
+		)
 		if err != nil {
 			return err
 		}
+
+		segment, err := NewSegment(i, start, end, segmentSize, fileWriter)
+		if err != nil {
+			return err
+		}
+		dl.SetSegment(segment)
 
 		dl.logger.Debug("segment created", slog.Group("segment",
 			slog.Int("index", i),
@@ -293,9 +316,6 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 			slog.Int64("start", start),
 			slog.Int64("end", end),
 		))
-
-		dl.segmentManager.Segments[i] = segment
-
 		// this should be handled in concurrent mode
 		// this should be handled in concurrent mode
 		// this should be handled in concurrent mode
@@ -344,7 +364,6 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 				slog.String("method", req.Method),
 			),
 			slog.String("error", err.Error()))
-
 		segment.setErr(err)
 		return err
 	}
@@ -375,12 +394,12 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 
 	//  server is sending part of the file.
 	if resp.StatusCode == http.StatusPartialContent {
-		dl.logger.Debug("copying part of the file that server sent")
+		dl.logger.Debug("copying part of the file that server sent.")
 
-		dl.logger.Debug("copying part of the file that server sen into segment buffer started")
+		dl.logger.Debug("copying part of the file that server sen into segment buffer started.")
 		_, err = io.Copy(segment, resp.Body)
 		if err != nil {
-			dl.logger.Debug("copying part of the file that server sen into segment buffer failed", slog.String("error", err.Error()))
+			dl.logger.Debug("copying part of the file that server sen into segment buffer failed.", slog.String("error", err.Error()))
 			segment.setErr(err)
 			return err
 		}
@@ -396,4 +415,9 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 			slog.Int("statusCode", resp.StatusCode),
 		))
 	return segment.setDone(false)
+}
+
+// SetSegment sets the given segment in the Downloader's SegmentManager.
+func (dl *Downloader) SetSegment(segment *Segment) {
+	dl.segmentManager.Segments[segment.id] = segment
 }
