@@ -65,24 +65,32 @@ func NewFileWriter(dir, name string) (*os.File, error) {
 	return file, nil
 }
 
+// Write writes the given data to the segment's buffer.
 func (seg *Segment) Write(data []byte) (int, error) {
 	return seg.buffer.Write(data)
 }
 
+// Flush flushes the segment's buffer, writing any buffered data to the underlying io.Writer.
 func (seg *Segment) Flush() error {
 	return seg.buffer.Flush()
 }
 
+// Close closes the segment, specifically its associated file.
 func (seg *Segment) Close() error {
 	return seg.segmentFile.Close()
 }
 
+// setErr sets the segment's error field if the provided error is non-nil.
 func (seg *Segment) setErr(err error) {
 	if err != nil {
 		seg.err = err
 	}
 }
 
+// setDone marks the segment as done or not done based on the provided boolean value.
+// If the boolean is false or if there is an existing error, it returns the error.
+// Otherwise, it sets the segment as done and flushes its buffer.
+// This function is used to finalize the segment's operations.
 func (seg *Segment) setDone(b bool) error {
 	if b == false || seg.err != nil {
 		return seg.err
