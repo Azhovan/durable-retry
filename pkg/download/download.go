@@ -159,6 +159,7 @@ func WithClient(client *Client) DownloaderOption {
 
 func WithNumberOfSegments(count int) DownloaderOption {
 	return func(dl *Downloader) {
+		dl.segmentManager.TotalSegments = count
 		dl.segmentManager.Segments = make(map[int]*Segment, count)
 	}
 }
@@ -196,13 +197,8 @@ func (dl *Downloader) UpdateRangeSupportState(response *http.Response) {
 // ValidateRangeSupport checks if the server supports range requests by making a test request.
 // It returns true if range requests are supported, false otherwise, along with an error if the check fails.
 func (dl *Downloader) ValidateRangeSupport(ctx context.Context, callback ResponseCallback) error {
-	dl.logger.Debug("init server range request check", slog.Group("req", slog.String("url", dl.sourceURL.String())))
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, dl.sourceURL.String(), http.NoBody)
 	if err != nil {
-		dl.logger.Debug("creating range request failed",
-			slog.String("error", err.Error()),
-		)
 		return fmt.Errorf("creating range request: %v", err)
 	}
 
@@ -213,76 +209,42 @@ func (dl *Downloader) ValidateRangeSupport(ctx context.Context, callback Respons
 
 	resp, err := dl.client.httpClient.Do(req)
 	if err != nil {
-		dl.logger.Debug("making range request failed",
-			slog.String("error", err.Error()),
-			slog.Group("req", slog.String("method", req.Method), slog.String("url", req.URL.String())),
-		)
 		return fmt.Errorf("making range request: %v", err) //nolint:errcheck
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		dl.logger.Debug("server range request check finished", slog.Bool("supported", false))
 		return ErrRangeRequestNotSupported
 	}
 
 	if callback != nil {
-		dl.logger.Debug("executing range support callback")
 		callback(resp)
-		dl.logger.Debug("executing range support callback completed")
 	}
 
-	dl.logger.Debug("server range request check finished", slog.Bool("supported", true))
 	return nil
 }
 
 func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallback) error {
-	dl.logger.Debug("range request validation started")
 	if err := dl.ValidateRangeSupport(ctx, callback); err != nil {
-		dl.logger.Debug("file download failed",
-			slog.Group("req", slog.String("url", dl.sourceURL.String())),
-			slog.String("error", err.Error()))
-
 		return err
 	}
-	dl.logger.Debug("range request validation finished")
 
 	// if filename is not provided, use tha last part of path in url
 	if dl.fileName == "" {
 		dl.fileName = path.Base(dl.sourceURL.String())
 	}
 
-	// range request is supported, adjust the number of segments dynamically
+	// range request is supported, adjust the number of segments dynamically if necessary
+	segmentSize := dl.rangeSupport.ContentLength / int64(dl.segmentManager.TotalSegments)
 	if dl.rangeSupport.SupportsRangeRequests {
-		totalSegments := int(dl.rangeSupport.ContentLength / dl.segmentManager.SegmentSize)
-
-		if totalSegments > DefaultNumberOfSegments {
-			dl.logger.Debug("adjusting the total segment counts",
-				slog.Int("oldValue", dl.segmentManager.TotalSegments),
-				slog.Int("newValue", totalSegments))
-
-			dl.segmentManager.TotalSegments = totalSegments
-		} else {
-			segmentSize := dl.rangeSupport.ContentLength / DefaultNumberOfSegments
-			dl.logger.Debug("adjusting the segment size using DefaultNumberOfSegments",
-				slog.Int64("oldValue", dl.segmentManager.SegmentSize),
-				slog.Int64("newValue", segmentSize))
+		if segmentSize > DefaultSegmentSize {
 			dl.segmentManager.SegmentSize = segmentSize
 		}
-
-	} else {
-		// performs a standard, non-segmented download using a single goroutine.
+	} else { // performs a standard, non-segmented download using a single goroutine.
 		dl.segmentManager.Segments = make(map[int]*Segment, 1)
 		dl.segmentManager.TotalSegments = 1
 	}
 
-	dl.logger.Debug("range request support",
-		slog.Bool("SupportsRangeRequests", dl.rangeSupport.SupportsRangeRequests),
-		slog.Int64("SegmentSize", dl.segmentManager.SegmentSize),
-		slog.Int("TotalSegments", dl.segmentManager.TotalSegments),
-	)
-
-	segmentSize := dl.segmentManager.SegmentSize
 	for i := 0; i < dl.segmentManager.TotalSegments; i++ {
 		var start, end = int64(0), int64(0)
 		if dl.rangeSupport.SupportsRangeRequests {
@@ -298,7 +260,7 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 		// create a new temporary file for each segment,
 		fileWriter, err := NewFileWriter(
 			dl.destinationDIR.String(),
-			fmt.Sprintf("%s-part-%d-*", dl.fileName, i),
+			fmt.Sprintf("%s-part-%d", dl.fileName, i),
 		)
 		if err != nil {
 			return err
@@ -310,12 +272,6 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 		}
 		dl.SetSegment(segment)
 
-		dl.logger.Debug("segment created", slog.Group("segment",
-			slog.Int("index", i),
-			slog.Int64("size", segmentSize),
-			slog.Int64("start", start),
-			slog.Int64("end", end),
-		))
 		// this should be handled in concurrent mode
 		// this should be handled in concurrent mode
 		// this should be handled in concurrent mode
@@ -332,16 +288,8 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 }
 
 func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
-	dl.logger.Debug("segment download started")
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dl.sourceURL.String(), http.NoBody)
 	if err != nil {
-		dl.logger.Debug("segment download request creation failed",
-			slog.Group("req",
-				slog.String("url", req.URL.String()),
-				slog.String("method", req.Method),
-			),
-			slog.String("error", err.Error()))
 		return err
 	}
 
@@ -350,70 +298,43 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 	}
 
 	if dl.client.auth != nil {
-		dl.logger.Debug("remote server authentication")
 		dl.client.auth.Apply(req)
 	}
 
-	dl.logger.Debug("sending http request to server started")
-
 	resp, err := dl.client.httpClient.Do(req)
 	if err != nil {
-		dl.logger.Debug("segment download failed",
-			slog.Group("req",
-				slog.String("url", req.URL.String()),
-				slog.String("method", req.Method),
-			),
-			slog.String("error", err.Error()))
 		segment.setErr(err)
 		return err
 	}
 	defer resp.Body.Close()
-	dl.logger.Debug("sending http request to server finished")
 
 	// server is sending the entire content of the file.
 	if resp.StatusCode == http.StatusOK {
-		dl.logger.Debug("downloading entire file's content finished")
-
-		dl.logger.Debug("copying entire file's content into segment buffer started")
 		_, err = io.Copy(segment, resp.Body)
 		if err != nil {
-			dl.logger.Debug("copying entire file's content into segment buffer failed", slog.String("error", err.Error()))
 			segment.setErr(err)
 			return err
 		}
 
-		dl.logger.Debug("copying entire file's content into segment buffer finished")
 		return segment.setDone(true)
 	}
 
 	// server has no more data.
 	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
-		dl.logger.Debug("server has no more data.")
 		return segment.setDone(true)
 	}
 
 	//  server is sending part of the file.
 	if resp.StatusCode == http.StatusPartialContent {
-		dl.logger.Debug("copying part of the file that server sent.")
-
-		dl.logger.Debug("copying part of the file that server sen into segment buffer started.")
 		_, err = io.Copy(segment, resp.Body)
 		if err != nil {
-			dl.logger.Debug("copying part of the file that server sen into segment buffer failed.", slog.String("error", err.Error()))
 			segment.setErr(err)
 			return err
 		}
 
-		dl.logger.Debug("copying part of the file that server sen into segment buffer finished")
 		return nil
 	}
 
-	dl.logger.Debug("segment download failed",
-		slog.Group("req",
-			slog.String("url", req.URL.String()),
-			slog.String("method", req.Method),
-			slog.Int("statusCode", resp.StatusCode),
-		))
 	return segment.setDone(false)
 }
 

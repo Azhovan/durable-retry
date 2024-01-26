@@ -2,8 +2,11 @@ package download
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Segment represents a part of the file being downloaded.
@@ -58,7 +61,12 @@ func NewSegment(id int, start, end, maxSegmentSize int64, writer io.Writer) (*Se
 // NewFileWriter creates a new temporary file in the specified directory with the given name pattern.
 // It returns a pointer to the created os.File and any error encountered during the file creation process.
 func NewFileWriter(dir, name string) (*os.File, error) {
-	file, err := os.CreateTemp(dir, name)
+	err := os.MkdirAll(dir, 0o755)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Create(fmt.Sprintf("%s/%s", strings.TrimSuffix(dir, string(filepath.Separator)), name))
 	if err != nil {
 		return nil, err
 	}
