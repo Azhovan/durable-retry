@@ -266,7 +266,13 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 			return err
 		}
 
-		segment, err := NewSegment(i, start, end, segmentSize, fileWriter)
+		segment, err := NewSegment(SegmentParams{
+			ID:             i,
+			Start:          start,
+			End:            end,
+			MaxSegmentSize: segmentSize,
+			Writer:         fileWriter,
+		})
 		if err != nil {
 			return err
 		}
@@ -294,7 +300,7 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 	}
 
 	if dl.rangeSupport.SupportsRangeRequests {
-		req.Header.Set("Range", strconv.FormatInt(segment.start, 10)+"-"+strconv.FormatInt(segment.end, 10))
+		req.Header.Set("Range", strconv.FormatInt(segment.Start, 10)+"-"+strconv.FormatInt(segment.End, 10))
 	}
 
 	if dl.client.auth != nil {
@@ -340,5 +346,5 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 
 // SetSegment sets the given segment in the Downloader's SegmentManager.
 func (dl *Downloader) SetSegment(segment *Segment) {
-	dl.segmentManager.Segments[segment.id] = segment
+	dl.segmentManager.Segments[segment.ID] = segment
 }

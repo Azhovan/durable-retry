@@ -11,20 +11,21 @@ import (
 
 func TestNewSegment(t *testing.T) {
 	writer := &bytes.Buffer{}
-
-	id := 1
-	maxSegmentSize := int64(5)
-	start := int64(0)
-	end := int64(10)
-	segment, err := NewSegment(id, start, end, maxSegmentSize, writer)
+	segment, err := NewSegment(SegmentParams{
+		ID:             1,
+		Start:          int64(0),
+		End:            int64(10),
+		MaxSegmentSize: int64(5),
+		Writer:         writer,
+	})
 	if assert.NoError(t, err) {
 		assert.NotNil(t, segment)
-		assert.Equal(t, 1, segment.id)
-		assert.Equal(t, int64(0), segment.start)
-		assert.Equal(t, int64(10), segment.end)
-		assert.Equal(t, int64(5), segment.maxSegmentSize)
+		assert.Equal(t, 1, segment.ID)
+		assert.Equal(t, int64(0), segment.Start)
+		assert.Equal(t, int64(10), segment.End)
+		assert.Equal(t, int64(5), segment.MaxSegmentSize)
 		assert.False(t, segment.done)
-		assert.Nil(t, segment.err)
+		assert.Nil(t, segment.Err)
 	}
 
 	_, err = io.Copy(segment, strings.NewReader("abcde"))
