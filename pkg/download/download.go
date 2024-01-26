@@ -241,10 +241,12 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 	// range request is supported, adjust the number of segments dynamically
 	if dl.rangeSupport.SupportsRangeRequests {
 		totalSegments := int(dl.rangeSupport.ContentLength / dl.segmentManager.SegmentSize)
+
 		if totalSegments > DefaultNumberOfSegments {
 			dl.logger.Debug("adjusting the total segment counts",
 				slog.Int("oldValue", dl.segmentManager.TotalSegments),
 				slog.Int("newValue", totalSegments))
+
 			dl.segmentManager.TotalSegments = totalSegments
 		} else {
 			segmentSize := dl.rangeSupport.ContentLength / DefaultNumberOfSegments
@@ -257,6 +259,7 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 	} else {
 		// performs a standard, non-segmented download using a single goroutine.
 		dl.segmentManager.Segments = make(map[int]*Segment, 1)
+		dl.segmentManager.TotalSegments = 1
 	}
 
 	dl.logger.Debug("range request support",
@@ -266,7 +269,6 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 	)
 
 	segmentSize := dl.segmentManager.SegmentSize
-
 	for i := 0; i < dl.segmentManager.TotalSegments; i++ {
 		var start, end = int64(0), int64(0)
 		if dl.rangeSupport.SupportsRangeRequests {
@@ -279,6 +281,7 @@ func (dl *Downloader) DownloadFile(ctx context.Context, callback ResponseCallbac
 			}
 		}
 
+		// create a new segment
 		segment, err := NewSegment(i, start, end, segmentSize)
 		if err != nil {
 			return err
