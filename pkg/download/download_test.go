@@ -37,7 +37,7 @@ func TestNewDownloader(t *testing.T) {
 			Level: slog.LevelDebug,
 		})
 
-		dl, err := NewDownloader("/tmp/dl",
+		dl, err := NewDownloader("/tmp/dls/download",
 			"https://httpbin.org/range/1024",
 			WithLogger(log),
 			WithNumberOfSegments(5),
@@ -47,14 +47,14 @@ func TestNewDownloader(t *testing.T) {
 
 		// delete all files
 		defer t.Cleanup(func() {
-			os.RemoveAll("/tmp/dl/")
+			os.RemoveAll("/tmp/dls/download")
 		})
 
 		err = dl.DownloadFile(context.Background(), dl.UpdateRangeSupportState)
 		assert.NoError(t, err)
 
 		// read downloaded file
-		f, err := os.Open("/tmp/dl/")
+		f, err := os.Open("/tmp/dls/download")
 		assert.NoError(t, err)
 
 		entries, err := f.ReadDir(-1)

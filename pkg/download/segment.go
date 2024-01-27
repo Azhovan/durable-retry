@@ -49,10 +49,10 @@ type SegmentParams struct {
 	// It's used to control the volume of data fetched in a single request and can be adjusted for optimization.
 	MaxSegmentSize int64
 
-	// Writer is an io.Writer where the data for each segment is written and persisted.
+	// Writer is an io.WriteCloser where the data for each segment is written and persisted.
 	// This field allows the Segment to abstract the details of where and how the data is stored.
 	// It could be a file, a buffer in memory, or any other type that implements the io.Writer interface.
-	Writer io.Writer
+	Writer io.WriteCloser
 }
 
 // NewSegment creates a new instance of a Segment struct.
@@ -66,9 +66,8 @@ func NewSegment(params SegmentParams) (*Segment, error) {
 			End:            params.End,
 			MaxSegmentSize: params.MaxSegmentSize,
 		},
-		done:        false,
-		buffer:      bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
-		segmentFile: nil,
+		done:   false,
+		buffer: bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
 	}, nil
 }
 
@@ -97,9 +96,9 @@ func (seg *Segment) Flush() error {
 	return seg.buffer.Flush()
 }
 
-// Close closes the segment, specifically its associated file.
+// Close closes the segment's underline writer.
 func (seg *Segment) Close() error {
-	return seg.segmentFile.Close()
+	return seg.Writer.Close()
 }
 
 // setErr sets the segment's error field if the provided error is non-nil.
