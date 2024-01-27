@@ -36,7 +36,6 @@ func TestNewSegment(t *testing.T) {
 			assert.Nil(t, segment.Err)
 		}
 	})
-
 	t.Run("Copy data into segment", func(t *testing.T) {
 		fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment2.txt")
 		assert.NoError(t, err)
@@ -61,7 +60,6 @@ func TestNewSegment(t *testing.T) {
 			assert.Equal(t, "abcdef", string(content))
 		}
 	})
-
 	t.Run("segment.setDone", func(t *testing.T) {
 		fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment3.txt")
 		assert.NoError(t, err)
@@ -88,7 +86,30 @@ func TestNewSegment(t *testing.T) {
 			content, err := io.ReadAll(fileWriter)
 			assert.NoError(t, err)
 			assert.Equal(t, "abcdefgh", string(content))
-
 		}
+	})
+	t.Run("ReadFrom", func(t *testing.T) {
+		fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment4.txt")
+		assert.NoError(t, err)
+
+		defer t.Cleanup(func() {
+			fileWriter.Close()
+			os.Remove("/tmp/dl/segments/segment3.txt")
+		})
+
+		segment, err := NewSegment(SegmentParams{
+			ID:             1,
+			Start:          int64(0),
+			End:            int64(10),
+			MaxSegmentSize: int64(5),
+			Writer:         fileWriter,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, true, segment.resumable)
+
+		src1 := strings.NewReader("one")
+		n, err := segment.ReadFrom(src1)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(3), n)
 	})
 }

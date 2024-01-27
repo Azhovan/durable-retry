@@ -4,7 +4,6 @@ package download
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -316,7 +315,7 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 
 	// server is sending the entire content of the file.
 	if resp.StatusCode == http.StatusOK {
-		_, err = io.Copy(segment, resp.Body)
+		_, err := segment.ReadFrom(resp.Body)
 		if err != nil {
 			segment.setErr(err)
 			return err
@@ -332,7 +331,7 @@ func (dl *Downloader) download(ctx context.Context, segment *Segment) error {
 
 	//  server is sending part of the file.
 	if resp.StatusCode == http.StatusPartialContent {
-		_, err = io.Copy(segment, resp.Body)
+		_, err := segment.ReadFrom(resp.Body)
 		if err != nil {
 			segment.setErr(err)
 			return err

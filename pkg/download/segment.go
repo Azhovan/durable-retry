@@ -58,22 +58,47 @@ type SegmentParams struct {
 	Writer io.WriteCloser
 }
 
+// InvalidSegmentParamError is a custom error type, indicates an invalid segment parameters.
+type InvalidSegmentParamError struct {
+	param, message string
+}
+
+func (e *InvalidSegmentParamError) Error() string {
+	return fmt.Sprintf("param:%s, given:%s", e.param, e.message)
+}
+
 // NewSegment creates a new instance of a Segment struct.
 // It initializes a segment of a file to be downloaded, with specified start and end byte positions.
 // The caller is responsible for managing the temporary file, including its deletion after the segment is processed.
 func NewSegment(params SegmentParams) (*Segment, error) {
+	if err := validateParams(params); err != nil {
+		return nil, err
+	}
+
 	_, resumable := params.Writer.(io.Seeker)
 	return &Segment{
-		SegmentParams: SegmentParams{
-			ID:             params.ID,
-			Start:          params.Start,
-			End:            params.End,
-			MaxSegmentSize: params.MaxSegmentSize,
-		},
-		done:      false,
-		resumable: resumable,
-		buffer:    bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
+		SegmentParams: params,
+		done:          false,
+		resumable:     resumable,
+		buffer:        bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
 	}, nil
+}
+
+func validateParams(params SegmentParams) error {
+	if params.ID < 0 {
+		return &InvalidSegmentParamError{param: "ID", message: "param can't be negative"}
+	}
+	if (params.Start == params.End) || params.Start < 0 || params.End <= 0 {
+		return &InvalidSegmentParamError{param: "start,end", message: "start, end position must be positive and start < end"}
+	}
+	if params.Writer == nil {
+		return &InvalidSegmentParamError{param: "writer", message: ""}
+	}
+	if params.MaxSegmentSize <= 0 {
+		return &InvalidSegmentParamError{param: "writer", message: ""}
+	}
+
+	return nil
 }
 
 // NewFileWriter creates a new temporary file in the specified directory with the given name pattern.
@@ -91,6 +116,21 @@ func NewFileWriter(dir, name string) (*os.File, error) {
 	}
 
 	return file, nil
+}
+
+func (seg *Segment) ReadFrom(src io.Reader) (int64, error) {
+	if seg.resumable {
+		seeker, ok := seg.Writer.(io.Seeker)
+		if !ok {
+			return 0, fmt.Errorf("writer does not support seeking")
+		}
+		n, err := seeker.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return n, nil
+		}
+	}
+
+	return seg.buffer.ReadFrom(src)
 }
 
 // Write writes the given data to the segment's buffer.
