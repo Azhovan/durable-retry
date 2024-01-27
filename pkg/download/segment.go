@@ -12,18 +12,21 @@ import (
 // Segment represents a part of the file being downloaded.
 // It contains the data and state for a specific portion (segment) of the file.
 type Segment struct {
+	// SegmentParams contains the configuration parameters for the segment.
 	SegmentParams
+
 	// done indicates whether the download of this segment is complete.
 	// It is set to true once the segment is successfully downloaded or if an irrecoverable error occurs.
 	done bool
 
+	// resumable indicates whether the provided writer supports resuming.
+	// It is set to true if the writer implements the io.Seeker interface, enabling the segment
+	// to resume writing from a specific offset.
+	resumable bool
+
 	// buffer is used to temporarily store data for this segment before writing to the file.
 	// It helps in efficient writing by reducing the number of write operations.
 	buffer *bufio.Writer
-
-	// segmentFile is a temporary file used for storing the data of this segment.
-	// It acts as a physical storage for the data being buffered.
-	segmentFile *os.File
 }
 
 // SegmentParams represents the parameters for a specific segment of a file being downloaded.
@@ -59,6 +62,7 @@ type SegmentParams struct {
 // It initializes a segment of a file to be downloaded, with specified start and end byte positions.
 // The caller is responsible for managing the temporary file, including its deletion after the segment is processed.
 func NewSegment(params SegmentParams) (*Segment, error) {
+	_, resumable := params.Writer.(io.Seeker)
 	return &Segment{
 		SegmentParams: SegmentParams{
 			ID:             params.ID,
@@ -66,8 +70,9 @@ func NewSegment(params SegmentParams) (*Segment, error) {
 			End:            params.End,
 			MaxSegmentSize: params.MaxSegmentSize,
 		},
-		done:   false,
-		buffer: bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
+		done:      false,
+		resumable: resumable,
+		buffer:    bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
 	}, nil
 }
 
@@ -79,10 +84,12 @@ func NewFileWriter(dir, name string) (*os.File, error) {
 		return nil, err
 	}
 
-	file, err := os.Create(fmt.Sprintf("%s/%s", strings.TrimSuffix(dir, string(filepath.Separator)), name))
+	fileName := fmt.Sprintf("%s/%s", strings.TrimSuffix(dir, string(filepath.Separator)), name)
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o666)
 	if err != nil {
 		return nil, err
 	}
+
 	return file, nil
 }
 
