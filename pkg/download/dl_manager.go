@@ -30,7 +30,7 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 		return err
 	}
 
-	// filename := path.Base(dm.Downloader.sourceURL.String())
+	// filename := path.Basen(dm.Downloader.sourceURL.String())
 
 	for _, segment := range segmentManager.Segments {
 		err := dm.Downloader.DownloadSegment(ctx, segment)

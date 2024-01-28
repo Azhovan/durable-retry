@@ -92,6 +92,7 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 			message: "fileSize must be greater than 0",
 		}
 	}
+
 	if dstDir == "" {
 		dstDir = "/tmp"
 	}
@@ -105,6 +106,12 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 		opt(sm)
 	}
 
+	if sm.TotalSegments > 0 {
+		sm.SegmentSize = fileSize / int64(sm.TotalSegments)
+	}
+	if sm.SegmentSize > 0 {
+		sm.TotalSegments = int(fileSize / sm.SegmentSize)
+	}
 	if sm.TotalSegments > 0 && sm.SegmentSize > 0 {
 		return nil, &InvalidParamError{
 			param:   "number of segments, segment size",
@@ -116,12 +123,6 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 			param:   "number of segments, segment size",
 			message: "only non-negative values are accepted",
 		}
-	}
-	if sm.TotalSegments > 0 {
-		sm.SegmentSize = fileSize / int64(sm.TotalSegments)
-	}
-	if sm.SegmentSize > 0 {
-		sm.TotalSegments = int(fileSize / sm.SegmentSize)
 	}
 	if sm.SegmentSize == 0 && sm.TotalSegments == 0 {
 		return nil, &InvalidParamError{
