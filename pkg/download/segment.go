@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,10 +35,22 @@ type Segment struct {
 // It encapsulates all the information and operations related to the segments
 // which are parts of the file being downloaded.
 type SegmentManager struct {
+	// ID is a unique segment manager identifier, this is used to prefix downloaded temporary files.
 	ID int
 
+	// DestinationDir is the directory where temporary/final segment file(s) is stored
 	DestinationDir string
 
+	// FileSize represents the size of the remote file to be downloaded. It can hold various values:
+	// - A positive value: Indicates the known size of the file.
+	// - Zero or -1: These values imply that the file size is unknown at the start of the download.
+	//               In such cases, the file is treated as a non-segmented download, and the stream
+	//               is read until the end. This approach is used for dynamically sized content or
+	//               when the server doesn't provide a 'Content-Length' header.
+	// - Upon completion of the download, if FileSize was initially zero or -1 but the downloaded content
+	//   has a non-zero size, FileSize is updated to reflect the actual size of the downloaded file.
+	//   This provides accurate information about the file size post-download, which is particularly useful
+	//   for downloads with initially unknown sizes.
 	FileSize int64
 
 	// Segments is a map where each key represents a unique segment index,
@@ -64,108 +77,6 @@ type SegmentManager struct {
 	// but may also lead to increased memory and network resource usage.
 	// Conversely, a lower value may be more resource-efficient.
 	TotalSegments int
-}
-
-// NewSegmentManager initializes and returns a new SegmentManager.
-// It takes the destination directory for segment files, the total file size to be downloaded,
-// and optional SegmentManagerOption functions to configure the SegmentManager.
-//
-// dstDir specifies the directory where segment files will be stored. If it is empty,
-// the default directory used will be "/tmp".
-//
-// This function creates a SegmentManager with a unique ID (based on the current time's nanoseconds),
-// calculates the segment size or number of segments based on the provided options,
-// and initializes Segment structs for each segment of the file.
-//
-// The SegmentManager's responsibility includes keeping track of each segment's
-// status and managing the download process for each part of the file.
-//
-// If fileSize is invalid, or if there's a conflict between the total number of segments
-// and segment size, an InvalidParamError is returned.
-//
-// Each segment is represented by a file in the destination directory, named with a pattern
-// that includes the SegmentManager's ID and the segment's index.
-func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOption) (*SegmentManager, error) {
-	if fileSize <= 0 {
-		return nil, &InvalidParamError{
-			param:   "file size",
-			message: "fileSize must be greater than 0",
-		}
-	}
-
-	if dstDir == "" {
-		dstDir = "/tmp"
-	}
-
-	sm := &SegmentManager{
-		ID:             time.Now().Nanosecond(),
-		DestinationDir: dstDir,
-		FileSize:       fileSize,
-	}
-	for _, opt := range opts {
-		opt(sm)
-	}
-
-	if sm.TotalSegments > 0 {
-		sm.SegmentSize = fileSize / int64(sm.TotalSegments)
-	}
-	if sm.SegmentSize > 0 {
-		sm.TotalSegments = int(fileSize / sm.SegmentSize)
-	}
-	if sm.TotalSegments > 0 && sm.SegmentSize > 0 {
-		return nil, &InvalidParamError{
-			param:   "number of segments, segment size",
-			message: "these two properties are mutually exclusive",
-		}
-	}
-	if sm.TotalSegments < 0 || sm.SegmentSize < 0 {
-		return nil, &InvalidParamError{
-			param:   "number of segments, segment size",
-			message: "only non-negative values are accepted",
-		}
-	}
-	if sm.SegmentSize == 0 && sm.TotalSegments == 0 {
-		return nil, &InvalidParamError{
-			param:   "segment size, number of segments",
-			message: "either segment size or number of segments must be greater than 0",
-		}
-	}
-
-	sm.Segments = make(map[int]*Segment, sm.TotalSegments)
-
-	for i := 0; i < sm.TotalSegments; i++ {
-		start := int64(i) * sm.SegmentSize
-		end := start + sm.SegmentSize - 1
-		// Set the end range can be set for last segment.
-		// in other cases we are relying on the server returned status code
-		if i == sm.TotalSegments-1 {
-			end = fileSize - 1
-		}
-
-		// create a new temporary file for each segment,
-		fileWriter, err := NewFileWriter(
-			dstDir,
-			fmt.Sprintf("segment-%d-part-%d", sm.ID, i),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		segment, err := NewSegment(SegmentParams{
-			ID:             i,
-			Start:          start,
-			End:            end,
-			MaxSegmentSize: sm.SegmentSize,
-			Writer:         fileWriter,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		sm.Segments[segment.ID] = segment
-	}
-
-	return sm, nil
 }
 
 type SegmentManagerOption func(manager *SegmentManager)
@@ -223,6 +134,113 @@ type SegmentParams struct {
 	Writer io.WriteCloser
 }
 
+const DefaultNumberOfSegments = 4
+
+// NewSegmentManager initializes and returns a new SegmentManager.
+// It takes the destination directory for segment files, the total file size to be downloaded,
+// and optional SegmentManagerOption functions to configure the SegmentManager.
+//
+// dstDir specifies the directory where segment files will be stored. If it is empty,
+// the default directory used will be "/tmp".
+//
+// This function creates a SegmentManager with a unique ID (based on the current time's nanoseconds),
+// calculates the segment size or number of segments based on the provided options,
+// and initializes Segment structs for each segment of the file.
+//
+// The SegmentManager's responsibility includes keeping track of each segment's
+// status and managing the download process for each part of the file.
+//
+// If fileSize is invalid, or if there's a conflict between the total number of segments
+// and segment size, an InvalidParamError is returned.
+//
+// Each segment is represented by a file in the destination directory, named with a pattern
+// that includes the SegmentManager's ID and the segment's index.
+func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOption) (*SegmentManager, error) {
+	if dstDir == "" {
+		dstDir = "/tmp"
+	}
+	sm := &SegmentManager{
+		ID:             time.Now().Nanosecond(),
+		DestinationDir: dstDir,
+		FileSize:       fileSize,
+	}
+
+	for _, opt := range opts {
+		opt(sm)
+	}
+
+	if sm.TotalSegments > 0 && sm.SegmentSize > 0 {
+		return nil, &InvalidParamError{
+			param:   "TotalSegments, SegmentSize",
+			message: "these two properties are mutually exclusive",
+		}
+	}
+	if sm.TotalSegments < 0 || sm.SegmentSize < 0 {
+		return nil, &InvalidParamError{
+			param:   "TotalSegments, SegmentSize",
+			message: "only non-negative values are accepted",
+		}
+	}
+
+	// File either is empty or is unknown, either case it is treated like a non-segmented file
+	if sm.FileSize == -1 || sm.FileSize == 0 {
+		sm.TotalSegments = 1
+		sm.SegmentSize = 0
+	}
+
+	if sm.FileSize > 0 {
+		ts := sm.TotalSegments
+		sz := sm.SegmentSize
+		if ts > 0 && sz == 0 {
+			sm.SegmentSize = fileSize / int64(sm.TotalSegments)
+		} else if ts == 0 && sz > 0 {
+			sm.TotalSegments = int(math.Ceil(float64(fileSize / sm.SegmentSize)))
+		} else {
+			sm.TotalSegments = DefaultNumberOfSegments
+			sm.SegmentSize = fileSize / int64(sm.TotalSegments)
+		}
+	}
+
+	// Initialize segments
+	sm.Segments = make(map[int]*Segment, sm.TotalSegments)
+	for i := 0; i < sm.TotalSegments; i++ {
+		var start, end = int64(0), int64(0)
+		// A non-segmented remote file, only one segment is created and SegmentSize = -1
+		if sm.SegmentSize > 0 {
+			start = int64(i) * sm.SegmentSize
+			end = start + sm.SegmentSize - 1
+			// Set the end range can be set for the last segment.
+			// In other cases, we are relying on the server returned status code
+			if i == sm.TotalSegments-1 {
+				end = fileSize - 1
+			}
+		}
+		// create a new temporary file for each segment,
+		fileWriter, err := NewFileWriter(
+			dstDir,
+			fmt.Sprintf("segment-%d-part-%d", sm.ID, i),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		segment, err := NewSegment(SegmentParams{
+			ID:             i,
+			Start:          start,
+			End:            end,
+			MaxSegmentSize: sm.SegmentSize,
+			Writer:         fileWriter,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		sm.Segments[segment.ID] = segment
+	}
+
+	return sm, nil
+}
+
 // NewSegment creates a new instance of a Segment struct.
 // It initializes a segment of a file to be downloaded, with specified start and end byte positions.
 // The caller is responsible for managing the temporary file, including its deletion after the segment is processed.
@@ -238,23 +256,6 @@ func NewSegment(params SegmentParams) (*Segment, error) {
 		resumable:     resumable,
 		buffer:        bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
 	}, nil
-}
-
-func validateParams(params SegmentParams) error {
-	if params.ID < 0 {
-		return &InvalidParamError{param: "ID", message: "param can't be negative"}
-	}
-	if (params.Start == params.End) || params.Start < 0 || params.End <= 0 {
-		return &InvalidParamError{param: "start,end", message: "start, end position must be positive and start < end"}
-	}
-	if params.Writer == nil {
-		return &InvalidParamError{param: "writer", message: ""}
-	}
-	if params.MaxSegmentSize <= 0 {
-		return &InvalidParamError{param: "writer", message: ""}
-	}
-
-	return nil
 }
 
 // NewFileWriter creates a new temporary file in the specified directory with the given name pattern.
@@ -331,4 +332,18 @@ type InvalidParamError struct {
 
 func (e *InvalidParamError) Error() string {
 	return fmt.Sprintf("param:%s, given:%s", e.param, e.message)
+}
+
+func validateParams(params SegmentParams) error {
+	if params.Start < 0 || params.End < 0 {
+		return &InvalidParamError{param: "Start, End", message: "start, end position must be positive and start < end"}
+	}
+	if params.Writer == nil {
+		return &InvalidParamError{param: "Writer", message: "segment writer is nil"}
+	}
+	if params.MaxSegmentSize < 0 {
+		return &InvalidParamError{param: "MaxSegmentSize", message: "MaxSegmentSize must be greater or equal to zero"}
+	}
+
+	return nil
 }

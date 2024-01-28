@@ -76,20 +76,79 @@ func TestNewDownloader(t *testing.T) {
 		}
 	})
 	t.Run("NewSegmentManager", func(t *testing.T) {
-		t.Run("invalid instantiation", func(t *testing.T) {
-			_, err := NewSegmentManager("/tmp/d/l/segments", 512)
-			var er *InvalidParamError
-			assert.ErrorAs(t, err, &er)
-		})
-		t.Run("valid instantiation", func(t *testing.T) {
-			sm, err := NewSegmentManager("/tmp/d/l/segments", 512, WithNumberOfSegments(1))
-			if assert.NoError(t, err) {
-				assert.Equal(t, "/tmp/d/l/segments", sm.DestinationDir)
-				assert.Equal(t, int64(512), sm.FileSize)
-				assert.Equal(t, int64(512), sm.SegmentSize)
-				assert.Equal(t, 1, sm.TotalSegments)
-				assert.NotNil(t, sm.Segments)
-			}
-		})
+		tests := []struct {
+			destinationDIR   string
+			filesize         int64
+			gotTotalSegments int
+			gotSegmentSize   int64
+
+			wantTotalSegments int
+			wantSegmentSize   int64
+			wantErr           error
+		}{
+			// file size is zero, totalSegments and gotSegmentSize are ignored
+			{destinationDIR: "", filesize: 0, wantSegmentSize: 0, wantTotalSegments: 1},
+			// file size is -1, totalSegments and gotSegmentSize are ignored
+			{destinationDIR: "/tmp/x/y", filesize: -1, wantSegmentSize: 0, wantTotalSegments: 1},
+			// file size is pre-determined, gotTotalSegments =2, and it is taken into account
+			{
+				destinationDIR:    "/tmp/foo/bar",
+				filesize:          12,
+				gotTotalSegments:  2,
+				wantTotalSegments: 2,
+				wantSegmentSize:   6,
+				wantErr:           nil,
+			},
+			// file size is pre-determined, segmentSize =2, and it is taken into account
+			{
+				destinationDIR:    "/tmp/foo/bar",
+				filesize:          12,
+				gotSegmentSize:    2,
+				wantTotalSegments: 6,
+				wantSegmentSize:   2,
+				wantErr:           nil,
+			},
+			// file size is pre-determined, wantTotalSegments and wantSegmentSize are calculated based on the DefaultNumberOfSegments constant
+			{
+				destinationDIR:    "/tmp/foo/bar",
+				filesize:          12,
+				wantSegmentSize:   3,
+				wantTotalSegments: DefaultNumberOfSegments,
+				wantErr:           nil,
+			},
+			// file size is pre-determined, segmentSize =2, and it is taken into account
+			{
+				destinationDIR:    "/tmp/foo/bar",
+				filesize:          12,
+				gotSegmentSize:    2,
+				wantSegmentSize:   2,
+				wantTotalSegments: 6,
+				wantErr:           nil,
+			},
+			// irrelevant of file size, gotTotalSegments and segmentSize cant be set at the same time
+			{
+				destinationDIR:   "/tmp/foo/bar",
+				filesize:         12,
+				gotTotalSegments: 2,
+				gotSegmentSize:   2,
+				wantErr:          &InvalidParamError{param: "TotalSegments, SegmentSize", message: "these two properties are mutually exclusive"},
+			},
+		}
+
+		for i, v := range tests {
+			t.Run(fmt.Sprintf("tests:#%d", i), func(t *testing.T) {
+				sm, err := NewSegmentManager(
+					v.destinationDIR,
+					v.filesize,
+					WithNumberOfSegments(v.gotTotalSegments),
+					WithSegmentSize(v.gotSegmentSize),
+				)
+				assert.Equal(t, err, v.wantErr)
+				if err == nil {
+					assert.Equal(t, sm.TotalSegments, v.wantTotalSegments)
+					assert.Equal(t, sm.SegmentSize, v.wantSegmentSize)
+				}
+			})
+		}
 	})
 }

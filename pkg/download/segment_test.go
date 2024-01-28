@@ -11,30 +11,44 @@ import (
 
 func TestNewSegment(t *testing.T) {
 	t.Run("NewSegment", func(t *testing.T) {
-		fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment1.txt")
-		assert.NoError(t, err)
+		t.Run("valid initialization", func(t *testing.T) {
+			fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment1.txt")
+			assert.NoError(t, err)
 
-		defer t.Cleanup(func() {
-			fileWriter.Close()
-			os.Remove("/tmp/dl/segments/segment1.txt")
-		})
+			defer t.Cleanup(func() {
+				fileWriter.Close()
+				os.Remove("/tmp/dl/segments/segment1.txt")
+			})
 
-		segment, err := NewSegment(SegmentParams{
-			ID:             1,
-			Start:          int64(0),
-			End:            int64(10),
-			MaxSegmentSize: int64(5),
-			Writer:         fileWriter,
+			segment, err := NewSegment(SegmentParams{
+				ID:             1,
+				Start:          int64(0),
+				End:            int64(10),
+				MaxSegmentSize: int64(5),
+				Writer:         fileWriter,
+			})
+			if assert.NoError(t, err) {
+				assert.NotNil(t, segment)
+				assert.Equal(t, 1, segment.ID)
+				assert.Equal(t, int64(0), segment.Start)
+				assert.Equal(t, int64(10), segment.End)
+				assert.Equal(t, int64(5), segment.MaxSegmentSize)
+				assert.False(t, segment.done)
+				assert.Nil(t, segment.Err)
+			}
 		})
-		if assert.NoError(t, err) {
-			assert.NotNil(t, segment)
-			assert.Equal(t, 1, segment.ID)
-			assert.Equal(t, int64(0), segment.Start)
-			assert.Equal(t, int64(10), segment.End)
-			assert.Equal(t, int64(5), segment.MaxSegmentSize)
-			assert.False(t, segment.done)
-			assert.Nil(t, segment.Err)
-		}
+		t.Run("invalid initialization", func(t *testing.T) {
+			// invalid writer
+			_, err := NewSegment(SegmentParams{
+				ID:             1,
+				Start:          int64(0),
+				End:            int64(10),
+				MaxSegmentSize: int64(5),
+				Writer:         nil,
+			})
+			var err1 *InvalidParamError
+			assert.ErrorAs(t, err, &err1)
+		})
 	})
 	t.Run("Copy data into segment", func(t *testing.T) {
 		fileWriter, err := NewFileWriter("/tmp/dl/segments", "segment2.txt")
@@ -47,8 +61,6 @@ func TestNewSegment(t *testing.T) {
 
 		segment, err := NewSegment(SegmentParams{
 			ID:             1,
-			Start:          int64(0),
-			End:            int64(10),
 			MaxSegmentSize: int64(5),
 			Writer:         fileWriter,
 		})
@@ -71,8 +83,6 @@ func TestNewSegment(t *testing.T) {
 
 		segment, err := NewSegment(SegmentParams{
 			ID:             1,
-			Start:          int64(0),
-			End:            int64(10),
 			MaxSegmentSize: int64(5),
 			Writer:         fileWriter,
 		})
