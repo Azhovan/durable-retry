@@ -172,7 +172,7 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 	}
 	defer resp.Body.Close()
 
-	// server is sending the entire content of the file.
+	// the server is sending the entire content of the file.
 	if resp.StatusCode == http.StatusOK {
 		_, err := segment.ReadFrom(resp.Body)
 		if err != nil {
@@ -188,7 +188,7 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 		return segment.setDone(true)
 	}
 
-	//  server is sending part of the file.
+	//  the server is sending part of the file.
 	if resp.StatusCode == http.StatusPartialContent {
 		_, err := segment.ReadFrom(resp.Body)
 		if err != nil {
