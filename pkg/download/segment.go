@@ -29,6 +29,11 @@ type Segment struct {
 	// Buffer is used to temporarily store data for this segment before writing to the file.
 	// It helps in efficient writing by reducing the number of write operations.
 	Buffer *bufio.Writer
+
+	// CurrentOffset represents the current position within the file immediately after the last write operation.
+	// It tracks the byte offset where the next writing will occur, ensuring data is written to the correct location in the file.
+	// This offset is updated each time a write operation is completed, reflecting the new position for subsequent operations.
+	CurrentOffset int
 }
 
 // SegmentManager manages the segments involved in a file download process.
@@ -292,7 +297,11 @@ func (seg *Segment) ReadFrom(src io.Reader) (int64, error) {
 
 // Write writes the given data to the segment's buffer.
 func (seg *Segment) Write(data []byte) (int, error) {
-	return seg.Buffer.Write(data)
+	n, err := seg.Buffer.Write(data)
+	if err != nil {
+		seg.CurrentOffset += n
+	}
+	return n, err
 }
 
 // Flush flushes the segment's buffer, writing any buffered data to the underlying io.Writer.
