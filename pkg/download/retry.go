@@ -3,6 +3,7 @@ package download
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -25,7 +26,7 @@ type RetryPolicy struct {
 
 	// OnRetry is an optional callback function called before each retry attempt.
 	// It can be used for logging or custom logic.
-	OnRetry func(attempt int, nextRetryIn time.Duration)
+	OnRetry func(id int, attempt int, nextRetryIn time.Duration)
 
 	// ShouldRetry is an optional callback that determines whether a retry should be attempted
 	// after an error. If not set, all errors will trigger a retry.
@@ -79,12 +80,12 @@ func WithJitter(jitter time.Duration) RetryOption {
 
 // Retry runs the given function with the retry policy.
 // It returns nil if the function succeeds within the retry limits, or the last error encountered.
-func (p *RetryPolicy) Retry(ctx context.Context, task func() error) error {
+func (p *RetryPolicy) Retry(ctx context.Context, segmentID int, task func() error) error {
 	var err error
 
 	totalRetryDuration := time.Duration(0)
 
-	for attempt := 0; attempt < p.MaxRetries; attempt++ {
+	for attempt := 1; attempt <= p.MaxRetries; attempt++ {
 		// we don't want to end up with goroutines that are stuck waiting to retry even after the context is canceled
 		select {
 		case <-ctx.Done():
@@ -112,7 +113,7 @@ func (p *RetryPolicy) Retry(ctx context.Context, task func() error) error {
 		}
 
 		if p.OnRetry != nil {
-			p.OnRetry(attempt+1, nextRetryIn)
+			p.OnRetry(segmentID, attempt+1, nextRetryIn)
 		}
 
 		time.Sleep(nextRetryIn)
@@ -125,10 +126,17 @@ const defaultMaxRetries = 5
 
 // DefaultRetryPolicy creates a retry policy with sensible defaults.
 func DefaultRetryPolicy() *RetryPolicy {
-	return NewRetryPolicy(
-		defaultMaxRetries,                // Retry up to 5 times
+	retry := NewRetryPolicy(
+		defaultMaxRetries, // Retry up to 5 times
+
 		WithRetryDelay(1*time.Second),    // Start with a 1-second delay
-		WithBackoffFactor(2),             // Double the delay with each retry
 		WithJitter(500*time.Millisecond), // Add up to 500ms of random jitter
+		WithBackoffFactor(2),             // Double the delay with each retry
 	)
+
+	retry.OnRetry = func(id int, attempt int, nextRetryIn time.Duration) {
+		fmt.Printf("segment ID:%d: retry attempt: %d, retring in: %v\n", id, attempt, nextRetryIn)
+	}
+
+	return retry
 }

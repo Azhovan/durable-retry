@@ -48,7 +48,7 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 			}
 
 			// this resumes to previous state, if segment had data in it
-			err = dm.RetryPolicy.Retry(ctx, func() error {
+			err = dm.RetryPolicy.Retry(ctx, seg.ID, func() error {
 				return dm.Downloader.DownloadSegment(ctx, seg)
 			})
 			if err != nil {
