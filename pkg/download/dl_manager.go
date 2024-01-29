@@ -2,20 +2,21 @@ package download
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
 type DownloadManager struct {
-	Downloader *Downloader
-	// RetryPolicy // This could be an interface or struct for handling retries
+	Downloader  *Downloader
+	RetryPolicy *RetryPolicy
+	Err         chan error
 	// ProgressTracker
-	// failedSegments []*Segment // Slice to store errors encountered during download
-
 }
 
-func NewDownloadManager(downloader *Downloader) *DownloadManager {
+func NewDownloadManager(downloader *Downloader, retryPolicy *RetryPolicy) *DownloadManager {
 	return &DownloadManager{
-		Downloader: downloader,
+		Downloader:  downloader,
+		RetryPolicy: retryPolicy,
 	}
 }
 
@@ -32,6 +33,8 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 		return err
 	}
 
+	dm.Err = make(chan error, smManager.TotalSegments)
+
 	wg := &sync.WaitGroup{}
 	wg.Add(smManager.TotalSegments)
 	for _, segment := range smManager.Segments {
@@ -43,15 +46,27 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 				return
 			default:
 			}
-			// no need to handle error here, any error that happened
-			// during segment download is persisted in the segment error field.
-			_ = dm.Downloader.DownloadSegment(ctx, seg)
+
+			// this resumes to previous state, if segment had data in it
+			err = dm.RetryPolicy.Retry(ctx, func() error {
+				return dm.Downloader.DownloadSegment(ctx, seg)
+			})
+			if err != nil {
+				dm.Err <- err
+			}
 		}(segment)
 	}
 	wg.Wait()
+	close(dm.Err)
 
-	// here is where we should handle retry policies
-	// and if error is persistent still, error is returned to the caller
+	var allErrors []error
+	for err := range dm.Err {
+		allErrors = append(allErrors, err)
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("download encountered following errors: %v", allErrors)
+	}
 
 	return nil
 }

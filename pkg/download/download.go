@@ -165,6 +165,12 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 		dl.Client.auth.Apply(req)
 	}
 
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	resp, err := dl.Client.httpClient.Do(req)
 	if err != nil {
 		segment.setErr(err)
