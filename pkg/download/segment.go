@@ -17,18 +17,18 @@ type Segment struct {
 	// SegmentParams contains the configuration parameters for the segment.
 	SegmentParams
 
-	// done indicates whether the download of this segment is complete.
+	// Done indicates whether the download of this segment is complete.
 	// It is set to true once the segment is successfully downloaded or if an irrecoverable error occurs.
-	done bool
+	Done bool
 
-	// resumable indicates whether the provided writer supports resuming.
+	// Resumable indicates whether the provided writer supports resuming.
 	// It is set to true if the writer implements the io.Seeker interface, enabling the segment
 	// to resume writing from a specific offset.
-	resumable bool
+	Resumable bool
 
-	// buffer is used to temporarily store data for this segment before writing to the file.
+	// Buffer is used to temporarily store data for this segment before writing to the file.
 	// It helps in efficient writing by reducing the number of write operations.
-	buffer *bufio.Writer
+	Buffer *bufio.Writer
 }
 
 // SegmentManager manages the segments involved in a file download process.
@@ -252,9 +252,9 @@ func NewSegment(params SegmentParams) (*Segment, error) {
 	_, resumable := params.Writer.(io.Seeker)
 	return &Segment{
 		SegmentParams: params,
-		done:          false,
-		resumable:     resumable,
-		buffer:        bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
+		Done:          false,
+		Resumable:     resumable,
+		Buffer:        bufio.NewWriterSize(params.Writer, int(params.MaxSegmentSize)),
 	}, nil
 }
 
@@ -276,7 +276,7 @@ func NewFileWriter(dir, name string) (*os.File, error) {
 }
 
 func (seg *Segment) ReadFrom(src io.Reader) (int64, error) {
-	if seg.resumable {
+	if seg.Resumable {
 		seeker, ok := seg.Writer.(io.Seeker)
 		if !ok {
 			return 0, fmt.Errorf("writer does not support seeking")
@@ -287,17 +287,17 @@ func (seg *Segment) ReadFrom(src io.Reader) (int64, error) {
 		}
 	}
 
-	return seg.buffer.ReadFrom(src)
+	return seg.Buffer.ReadFrom(src)
 }
 
 // Write writes the given data to the segment's buffer.
 func (seg *Segment) Write(data []byte) (int, error) {
-	return seg.buffer.Write(data)
+	return seg.Buffer.Write(data)
 }
 
 // Flush flushes the segment's buffer, writing any buffered data to the underlying io.Writer.
 func (seg *Segment) Flush() error {
-	return seg.buffer.Flush()
+	return seg.Buffer.Flush()
 }
 
 // Close closes the segment's underline writer.
@@ -321,7 +321,7 @@ func (seg *Segment) setDone(b bool) error {
 		return seg.Err
 	}
 
-	seg.done = b
+	seg.Done = b
 	return seg.Flush()
 }
 

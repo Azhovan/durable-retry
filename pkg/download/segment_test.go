@@ -33,7 +33,7 @@ func TestNewSegment(t *testing.T) {
 				assert.Equal(t, int64(0), segment.Start)
 				assert.Equal(t, int64(10), segment.End)
 				assert.Equal(t, int64(5), segment.MaxSegmentSize)
-				assert.False(t, segment.done)
+				assert.False(t, segment.Done)
 				assert.Nil(t, segment.Err)
 			}
 		})
@@ -115,7 +115,7 @@ func TestNewSegment(t *testing.T) {
 			Writer:         fileWriter,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, true, segment.resumable)
+		assert.Equal(t, true, segment.Resumable)
 
 		src1 := strings.NewReader("one")
 		n, err := segment.ReadFrom(src1)
