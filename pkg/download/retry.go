@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// ErrMaxTotalRetryDurationExceeded is an error indicating that the maximum total retry duration has been exceeded.
 var ErrMaxTotalRetryDurationExceeded = errors.New("maximum total retry duration exceeded")
 
 // RetryPolicy defines the configuration for retrying operations.
@@ -44,6 +45,10 @@ type RetryPolicy struct {
 }
 
 // NewRetryPolicy creates a new RetryPolicy with the given parameters.
+//
+// This function initializes a new source of random numbers (seeded with the current time)
+// used for generating jitter in retry intervals. This randomness helps to spread out retry
+// attempts in distributed systems and prevent synchronized retries.
 func NewRetryPolicy(maxRetries int, options ...RetryOption) *RetryPolicy {
 	seed := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -58,20 +63,25 @@ func NewRetryPolicy(maxRetries int, options ...RetryOption) *RetryPolicy {
 	return retry
 }
 
+// RetryOption is a functional option for configuring a RetryPolicy.
 type RetryOption func(policy *RetryPolicy)
 
+// WithRetryDelay is a RetryOption that sets the initial delay
+// before the first retry in the RetryPolicy.
 func WithRetryDelay(delay time.Duration) RetryOption {
 	return func(policy *RetryPolicy) {
 		policy.RetryDelay = delay
 	}
 }
 
+// WithBackoffFactor is a RetryOption function that sets the backoff factor of the RetryPolicy.
 func WithBackoffFactor(factor float64) RetryOption {
 	return func(policy *RetryPolicy) {
 		policy.BackoffFactor = factor
 	}
 }
 
+// WithJitter is a RetryOption that sets the Jitter value in the RetryPolicy.
 func WithJitter(jitter time.Duration) RetryOption {
 	return func(policy *RetryPolicy) {
 		policy.Jitter = jitter
@@ -79,7 +89,13 @@ func WithJitter(jitter time.Duration) RetryOption {
 }
 
 // Retry runs the given function with the retry policy.
-// It returns nil if the function succeeds within the retry limits, or the last error encountered.
+// It implements a retry mechanism based on the policy's configuration,
+// such as maximum retries, retry delay, backoff factor, and jitter.
+// Usage:
+//
+//	err := retryPolicy.Retry(ctx, segmentID, func() error {
+//	    // Operation to retry
+//	})
 func (p *RetryPolicy) Retry(ctx context.Context, segmentID int, task func() error) error {
 	var err error
 
@@ -127,8 +143,7 @@ const defaultMaxRetries = 5
 // DefaultRetryPolicy creates a retry policy with sensible defaults.
 func DefaultRetryPolicy() *RetryPolicy {
 	retry := NewRetryPolicy(
-		defaultMaxRetries, // Retry up to 5 times
-
+		defaultMaxRetries,                // Retry up to 5 times
 		WithRetryDelay(1*time.Second),    // Start with a 1-second delay
 		WithJitter(500*time.Millisecond), // Add up to 500ms of random jitter
 		WithBackoffFactor(2),             // Double the delay with each retry
