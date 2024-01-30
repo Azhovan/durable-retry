@@ -65,7 +65,7 @@ type SegmentManager struct {
 	// download progresses.
 	//
 	// TODO(azhovan): consider dynamic adjustment of segment size
-	Segments map[int]*Segment
+	Segments []*Segment
 
 	// SegmentSize specifies the maximum size, in bytes, that each segment can contain.
 	// It determines the volume of data each segment fetches in a single request and
@@ -207,7 +207,7 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 	}
 
 	// Initialize segments
-	sm.Segments = make(map[int]*Segment, sm.TotalSegments)
+	sm.Segments = make([]*Segment, sm.TotalSegments)
 	for i := 0; i < sm.TotalSegments; i++ {
 		var start, end = int64(0), int64(0)
 		// A non-segmented remote file, only one segment is created and SegmentSize = -1

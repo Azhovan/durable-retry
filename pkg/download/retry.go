@@ -88,6 +88,20 @@ func WithJitter(jitter time.Duration) RetryOption {
 	}
 }
 
+// WithMaxTotalRetryDuration is a RetryOption that sets the MaxTotalRetryDuration value in the RetryPolicy.
+func WithMaxTotalRetryDuration(duration time.Duration) RetryOption {
+	return func(policy *RetryPolicy) {
+		policy.MaxTotalRetryDuration = duration
+	}
+}
+
+// WithShouldRetryPolicy is a RetryOption that sets the ShouldRetry value in the RetryPolicy.
+func WithShouldRetryPolicy(shouldRetry func(err error) bool) RetryOption {
+	return func(policy *RetryPolicy) {
+		policy.ShouldRetry = shouldRetry
+	}
+}
+
 // Retry runs the given function with the retry policy.
 // It implements a retry mechanism based on the policy's configuration,
 // such as maximum retries, retry delay, backoff factor, and jitter.
@@ -113,6 +127,7 @@ func (p *RetryPolicy) Retry(ctx context.Context, segmentID int, task func() erro
 			return nil
 		}
 
+		// when ShouldRetry is not set, it'll always retry
 		if p.ShouldRetry != nil && !p.ShouldRetry(err) {
 			return err
 		}
