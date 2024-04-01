@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 
 	"github.com/azhovan/durable-resume/pkg/logger"
@@ -121,6 +122,15 @@ func (dl *Downloader) UpdateRangeSupportState(response *http.Response) {
 	dl.RangeSupport.ContentLength = response.ContentLength
 }
 
+// Filename returns the filename associated with the Downloader.
+func (dl *Downloader) Filename() string {
+	if dl.FileName != "" {
+		return dl.FileName
+	}
+
+	return filepath.Base(dl.SourceURL.Path)
+}
+
 // ValidateRangeSupport checks if the server supports range requests by making a test request.
 // It returns true if range requests are supported, false otherwise, along with an error if the check fails.
 func (dl *Downloader) ValidateRangeSupport(ctx context.Context, callback ResponseCallback) error {
@@ -157,8 +167,10 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 		return err
 	}
 
+	var rangeRequest string
 	if dl.RangeSupport.SupportsRangeRequests {
-		req.Header.Set("Range", strconv.FormatInt(segment.Start, 10)+"-"+strconv.FormatInt(segment.End, 10))
+		rangeRequest = "bytes=" + strconv.FormatInt(segment.Start, 10) + "-" + strconv.FormatInt(segment.End, 10)
+		req.Header.Set("Range", rangeRequest)
 	}
 
 	if dl.Client.auth != nil {
@@ -171,6 +183,17 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 	default:
 	}
 
+	dl.Logger.Debug("segment download",
+		slog.Group("segment",
+			slog.Int64("start", segment.Start),
+			slog.Int64("end", segment.End),
+			slog.Int("ID", segment.ID)),
+		slog.Group("range-request",
+			slog.Bool("supported", dl.RangeSupport.SupportsRangeRequests),
+			slog.String("value", rangeRequest),
+		),
+	)
+
 	resp, err := dl.Client.httpClient.Do(req)
 	if err != nil {
 		segment.setErr(err)
@@ -178,32 +201,23 @@ func (dl *Downloader) DownloadSegment(ctx context.Context, segment *Segment) err
 	}
 	defer resp.Body.Close()
 
-	// the server is sending the entire content of the file.
-	if resp.StatusCode == http.StatusOK {
-		_, err := segment.ReadFrom(resp.Body)
-		if err != nil {
-			segment.setErr(err)
-			return err
-		}
-
-		return segment.setDone(true)
-	}
-
 	// server has no more data.
 	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 		return segment.setDone(true)
 	}
 
-	//  the server is sending part of the file.
-	if resp.StatusCode == http.StatusPartialContent {
+	// the server sent the entire response of the request.
+	if (resp.StatusCode == http.StatusOK) || (resp.StatusCode == http.StatusPartialContent) {
 		_, err := segment.ReadFrom(resp.Body)
 		if err != nil {
 			segment.setErr(err)
 			return err
 		}
 
-		return nil
+		return segment.setDone(true)
 	}
+
+	segment.setErr(fmt.Errorf("server responded with: %s error", resp.Status))
 
 	return segment.setDone(false)
 }

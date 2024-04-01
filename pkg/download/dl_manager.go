@@ -17,9 +17,6 @@ type DownloadManager struct {
 
 	// RetryPolicy defines the strategy for retrying download attempts in case of failure.
 	RetryPolicy *RetryPolicy
-
-	// Err is a channel for collecting errors from individual download segments.
-	Err chan error
 	// TODO(azhovan): ProgressTracker
 }
 
@@ -32,16 +29,15 @@ func NewDownloadManager(downloader *Downloader, retryPolicy *RetryPolicy) *Downl
 	}
 }
 
-// StartDownload initiates the download process.
+// Download initiates the download process.
 // It returns nil if the download completes successfully or an error if issues occur.
-func (dm *DownloadManager) StartDownload(ctx context.Context) error {
-	// Validate server's support for range requests
-	if err := dm.Downloader.ValidateRangeSupport(ctx, dm.Downloader.UpdateRangeSupportState); err != nil {
+func (dm *DownloadManager) Download(ctx context.Context) error {
+	err := dm.Downloader.ValidateRangeSupport(ctx, dm.Downloader.UpdateRangeSupportState)
+	if err != nil {
 		return err
 	}
 
-	// Initialize SegmentManager for handling file segments
-	smManager, err := NewSegmentManager(
+	sm, err := NewSegmentManager(
 		dm.Downloader.DestinationDIR.String(),
 		dm.Downloader.RangeSupport.ContentLength,
 	)
@@ -49,12 +45,13 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 		return err
 	}
 
-	dm.Err = make(chan error, smManager.TotalSegments)
+	// capture errors for each segment
+	errs := make(chan error, sm.TotalSegments)
 
 	// Use a WaitGroup to wait for all download goroutines to complete
 	wg := &sync.WaitGroup{}
-	wg.Add(smManager.TotalSegments)
-	for _, segment := range smManager.Segments {
+	wg.Add(sm.TotalSegments)
+	for _, segment := range sm.Segments {
 		go func(seg *Segment) {
 			defer wg.Done()
 
@@ -69,16 +66,16 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 				return dm.Downloader.DownloadSegment(ctx, seg)
 			})
 			if err != nil {
-				dm.Err <- err
+				errs <- err
 			}
 		}(segment)
 	}
 	wg.Wait()
-	close(dm.Err)
+	close(errs)
 
 	// Aggregate and return any errors encountered during the download
 	var allErrors []error
-	for err := range dm.Err {
+	for err := range errs {
 		allErrors = append(allErrors, err)
 	}
 
@@ -86,5 +83,5 @@ func (dm *DownloadManager) StartDownload(ctx context.Context) error {
 		return fmt.Errorf("download encountered following errors: %v", allErrors)
 	}
 
-	return nil
+	return sm.MergeFiles(dm.Downloader.Filename())
 }

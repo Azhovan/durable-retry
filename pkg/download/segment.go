@@ -2,16 +2,23 @@ package download
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-// Segment represents a part of the file being downloaded.
+var (
+	ErrNoContent          = errors.New("there is no contents in segments")
+	ErrInvalidContentType = errors.New("can't determine the content type")
+)
+
+// The Segment represents a part of the file being downloaded.
 // It contains the data and state for a specific portion (segment) of the file.
 type Segment struct {
 	// SegmentParams contains the configuration parameters for the segment.
@@ -117,6 +124,9 @@ type SegmentParams struct {
 	// id uniquely identifies the segment.
 	ID int
 
+	// Name is the name of the temporary file associated with the segment.
+	Name string
+
 	// Start indicates the starting byte of the segment within the file.
 	// It marks the beginning of the portion of the file this segment is responsible for downloading.
 	Start int64
@@ -220,17 +230,17 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 				end = fileSize - 1
 			}
 		}
+
+		segmentName := fmt.Sprintf("segment-%d-part-%d", sm.ID, i)
 		// create a new temporary file for each segment,
-		fileWriter, err := NewFileWriter(
-			dstDir,
-			fmt.Sprintf("segment-%d-part-%d", sm.ID, i),
-		)
+		fileWriter, err := NewFileWriter(dstDir, segmentName)
 		if err != nil {
 			return nil, err
 		}
 
 		segment, err := NewSegment(SegmentParams{
 			ID:             i,
+			Name:           segmentName,
 			Start:          start,
 			End:            end,
 			MaxSegmentSize: sm.SegmentSize,
@@ -244,6 +254,79 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 	}
 
 	return sm, nil
+}
+
+type SegmentError struct {
+	Err     error
+	Details string
+}
+
+func (e *SegmentError) Error() string {
+	return fmt.Sprintf("%s, with error: %v", e.Details, e.Err)
+}
+
+func (sm *SegmentManager) MergeFiles(filename string) error {
+	if len(sm.Segments) == 0 {
+		return ErrNoContent
+	}
+
+	// read 512 bytes of the first segment to determine the content type
+	segment0 := sm.Segments[0]
+	file0, err := NewFileWriter(sm.DestinationDir, segment0.Name)
+	if err != nil {
+		return &SegmentError{Err: err, Details: "reading segment0 failed"}
+	}
+
+	m := make([]byte, 512)
+	_, err = file0.Read(m)
+	if err != nil {
+		return &SegmentError{Err: err, Details: "reading segment0 failed"}
+	}
+
+	ext, err := detectType(m)
+	if err != nil {
+		return err
+	}
+
+	// concatenate segment files
+	for i := 1; i < len(sm.Segments); i++ {
+		current := sm.Segments[i]
+		f, err := NewFileWriter(sm.DestinationDir, current.Name)
+		if err != nil {
+			return err
+		}
+
+		_, err = segment0.ReadFrom(f)
+		if err != nil {
+			return &SegmentError{Err: err, Details: fmt.Sprintf("reading segment %d failed", i)}
+		}
+	}
+
+	err = segment0.setDone(true)
+	if err != nil {
+		return &SegmentError{Err: err, Details: "closing the segment 0 failed"}
+	}
+
+	// set the destination file name
+	return os.Rename(file0.Name(), fmt.Sprintf("%s/%s%s", sm.DestinationDir, filename, ext))
+}
+
+func detectType(m []byte) (string, error) {
+	ct := http.DetectContentType(m)
+
+	// usually the content type comes with <media type><subtype>; <extra information>
+	mediaSubtype, _, _ := strings.Cut(ct, ";")
+	ext, ok := commonMimeTypes[mediaSubtype]
+	if ok {
+		return ext, nil
+	}
+
+	_, subtype, ok := strings.Cut(ct, "/")
+	if !ok {
+		return "", ErrInvalidContentType
+	}
+
+	return fmt.Sprintf(".%s", subtype), nil
 }
 
 // NewSegment creates a new instance of a Segment struct.

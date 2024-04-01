@@ -2,25 +2,31 @@ package download
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"regexp"
 	"testing"
 
+	"github.com/azhovan/durable-resume/pkg/logger"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewDownloadManager(t *testing.T) {
 	t.Run("NewDownloadManager", func(t *testing.T) {
-		downloader, err := NewDownloader("/tmp/xx/", "https://httpbin.org/range/512")
+		log := logger.NewLogger(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
+
+		downloader, err := NewDownloader("/tmp/xxy/", "https://httpbin.org/range/512", WithLogger(log))
 		if assert.NoError(t, err) {
 			defer t.Cleanup(func() {
-				os.RemoveAll("/tmp/xx/")
+				// os.RemoveAll("/tmp/xx/")
 			})
 
 			dlManager := NewDownloadManager(downloader, DefaultRetryPolicy())
-			err = dlManager.StartDownload(context.Background())
+			err = dlManager.Download(context.Background())
 			assert.NoError(t, err)
 		}
 	})
@@ -41,7 +47,7 @@ func TestNewDownloadManager(t *testing.T) {
 			})
 
 			dlManager := NewDownloadManager(downloader, DefaultRetryPolicy())
-			err = dlManager.StartDownload(context.Background())
+			err = dlManager.Download(context.Background())
 			assert.NotNil(t, err)
 
 			// Assert error is EOF
