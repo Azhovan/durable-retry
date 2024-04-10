@@ -31,6 +31,7 @@ func NewDownloadManager(downloader *Downloader, retryPolicy *RetryPolicy) *Downl
 
 // Download initiates the download process.
 // It returns nil if the download completes successfully or an error if issues occur.
+// TODO(azhovan): not override existing files
 func (dm *DownloadManager) Download(ctx context.Context) error {
 	err := dm.Downloader.ValidateRangeSupport(ctx, dm.Downloader.UpdateRangeSupportState)
 	if err != nil {

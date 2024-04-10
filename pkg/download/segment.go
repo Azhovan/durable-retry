@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -265,6 +266,9 @@ func (e *SegmentError) Error() string {
 	return fmt.Sprintf("%s, with error: %v", e.Details, e.Err)
 }
 
+// MergeFiles concatenates multiple segment files into one file with the specified filename.
+// The content type of the merged file is determined by reading the first 512 bytes of the first segment.
+// If there are no segments to merge, it returns an ErrNoContent error.
 func (sm *SegmentManager) MergeFiles(filename string) error {
 	if len(sm.Segments) == 0 {
 		return ErrNoContent
@@ -288,6 +292,7 @@ func (sm *SegmentManager) MergeFiles(filename string) error {
 		return err
 	}
 
+	wg := &sync.WaitGroup{}
 	// concatenate segment files
 	for i := 1; i < len(sm.Segments); i++ {
 		current := sm.Segments[i]
@@ -296,11 +301,22 @@ func (sm *SegmentManager) MergeFiles(filename string) error {
 			return err
 		}
 
+		wg.Add(1)
+
 		_, err = segment0.ReadFrom(f)
 		if err != nil {
 			return &SegmentError{Err: err, Details: fmt.Sprintf("reading segment %d failed", i)}
 		}
+
+		// remove the temporary segment file
+		go func(file *os.File) {
+			defer wg.Done()
+			_ = file.Close()
+			_ = os.Remove(file.Name())
+		}(f)
 	}
+
+	wg.Wait()
 
 	err = segment0.setDone(true)
 	if err != nil {

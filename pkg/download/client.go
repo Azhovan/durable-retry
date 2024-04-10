@@ -49,7 +49,7 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 	}
 }
 
-// WithAuth is an option function that allow the user to provide authentication method.
+// WithAuth is an option function that allows the user to provide authentication method.
 func WithAuth(auth AuthStrategy) ClientOption {
 	return func(client *Client) {
 		client.auth = auth
