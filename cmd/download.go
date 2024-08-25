@@ -53,7 +53,7 @@ func newDownloadCmd(output io.Writer) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.remoteURL, "url", "u", "", "The remote file address to download.")
 	cmd.Flags().StringVarP(&opts.dstDIR, "out", "o", "", "The local file target directory to save file.")
 	cmd.Flags().Int64VarP(&opts.segSize, "segment-size", "s", 0, "The size of each segment for download a file.")
-	cmd.Flags().IntVarP(&opts.segCount, "segment-count", "n", download.DefaultNumberOfSegments, "The number of segments for download a file.")
+	cmd.Flags().IntVarP(&opts.segCount, "segment-count", "n", download.DefaultNumberOfSegments, "The number of segments to use for file download. This is auto-adjusted if not explicitly provided.")
 	cmd.Flags().StringVarP(&opts.filename, "file", "f", "", "The downloaded file name")
 
 	return cmd
