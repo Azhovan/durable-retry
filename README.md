@@ -52,7 +52,7 @@ Contributions are welcome! For details on how to contribute, please refer to our
 
 *Add a link to contributing guidelines here.*
 
-## License
+## Roadmap
 
-*Include information about the project's license.*
+* Implementing a progress bar
 
