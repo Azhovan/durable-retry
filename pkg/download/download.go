@@ -101,7 +101,9 @@ func WithClient(Client *Client) DownloaderOption {
 // WithFileName is an option function for configuring the name of downloaded file.
 func WithFileName(name string) DownloaderOption {
 	return func(dl *Downloader) {
-		dl.FileName = name
+		if name != "" {
+			dl.FileName = name
+		}
 	}
 }
 

@@ -98,7 +98,9 @@ type SegmentManagerOption func(manager *SegmentManager)
 // This function sets the size of individual segments into which the file will be divided during the download process.
 func WithSegmentSize(size int64) SegmentManagerOption {
 	return func(sm *SegmentManager) {
-		sm.SegmentSize = size
+		if size > 0 {
+			sm.SegmentSize = size
+		}
 	}
 }
 
@@ -114,7 +116,9 @@ func WithSegmentSize(size int64) SegmentManagerOption {
 //   - It is important to find a balance that suits the specific requirements of the environment and the file size.
 func WithNumberOfSegments(n int) SegmentManagerOption {
 	return func(sm *SegmentManager) {
-		sm.TotalSegments = n
+		if n > 0 {
+			sm.TotalSegments = n
+		}
 	}
 }
 
@@ -188,7 +192,7 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 	if sm.TotalSegments > 0 && sm.SegmentSize > 0 {
 		return nil, &InvalidParamError{
 			param:   "TotalSegments, SegmentSize",
-			message: "these two properties are mutually exclusive",
+			message: "these two properties are mutually exclusive, set only one of them",
 		}
 	}
 	if sm.TotalSegments < 0 || sm.SegmentSize < 0 {
@@ -198,7 +202,7 @@ func NewSegmentManager(dstDir string, fileSize int64, opts ...SegmentManagerOpti
 		}
 	}
 
-	// File either is empty or is unknown, either case it is treated like a non-segmented file
+	// The file either is empty or is unknown, either case it is treated like a non-segmented file
 	if sm.FileSize == -1 || sm.FileSize == 0 {
 		sm.TotalSegments = 1
 		sm.SegmentSize = 0

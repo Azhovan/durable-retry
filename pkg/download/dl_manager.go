@@ -18,6 +18,8 @@ type DownloadManager struct {
 	// RetryPolicy defines the strategy for retrying download attempts in case of failure.
 	RetryPolicy *RetryPolicy
 	// TODO(azhovan): ProgressTracker
+
+	Segm *SegmentManager
 }
 
 // NewDownloadManager creates a new instance of DownloadManager with the specified downloader
@@ -32,27 +34,28 @@ func NewDownloadManager(downloader *Downloader, retryPolicy *RetryPolicy) *Downl
 // Download initiates the download process.
 // It returns nil if the download completes successfully or an error if issues occur.
 // TODO(azhovan): not override existing files
-func (dm *DownloadManager) Download(ctx context.Context) error {
+func (dm *DownloadManager) Download(ctx context.Context, opts ...SegmentManagerOption) error {
 	err := dm.Downloader.ValidateRangeSupport(ctx, dm.Downloader.UpdateRangeSupportState)
 	if err != nil {
 		return err
 	}
 
-	sm, err := NewSegmentManager(
+	dm.Segm, err = NewSegmentManager(
 		dm.Downloader.DestinationDIR.String(),
 		dm.Downloader.RangeSupport.ContentLength,
+		opts...,
 	)
 	if err != nil {
 		return err
 	}
 
 	// capture errors for each segment
-	errs := make(chan error, sm.TotalSegments)
+	errs := make(chan error, dm.Segm.TotalSegments)
 
 	// Use a WaitGroup to wait for all download goroutines to complete
 	wg := &sync.WaitGroup{}
-	wg.Add(sm.TotalSegments)
-	for _, segment := range sm.Segments {
+	wg.Add(dm.Segm.TotalSegments)
+	for _, segment := range dm.Segm.Segments {
 		go func(seg *Segment) {
 			defer wg.Done()
 
@@ -84,5 +87,5 @@ func (dm *DownloadManager) Download(ctx context.Context) error {
 		return fmt.Errorf("download encountered following errors: %v", allErrors)
 	}
 
-	return sm.MergeFiles(dm.Downloader.Filename())
+	return dm.Segm.MergeFiles(dm.Downloader.Filename())
 }
