@@ -16,7 +16,7 @@ With a focus on reliability and flexibility, it's particularly adept at handling
 ## Download 
 
 ```shell
-go install github.com/Azhovan/durable-resume@main
+go install github.com/azhovan/durable-resume@latest
 ```
 
 ## Usage
@@ -24,7 +24,25 @@ The following command download and save the context of the given file in the rem
 and in a file called `some-files.pdf`
 ```shell
 exmapleURL=https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
-./dr download -u $exmapleURL --out=$(pwd) -f some-files
+$ durable-resume download -u $exmapleURL --out=$(pwd) -f some-files
+
+
+# see help 
+$ durable-resume download -h 
+
+download remote file and store it in a local directory
+
+Usage:
+  dr download --url [ADDRESS] --out [DIRECTORY] [flags]
+
+Flags:
+  -f, --file string         The downloaded file name
+  -h, --help                help for download
+  -o, --out string          The local file target directory to save file.
+  -n, --segment-count int   The number of segments for download a file. (default 4)
+  -s, --segment-size int    The size of each segment for download a file.
+  -u, --url string          The remote file address to download.
+
 ```
 
 
