@@ -1,4 +1,4 @@
-# Durable Resume (under development)
+# Durable Resume
 
 ## Overview
 
