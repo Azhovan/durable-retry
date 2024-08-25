@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"net/url"
 
@@ -26,9 +27,9 @@ func newDownloadCmd(output io.Writer) *cobra.Command {
 		Short: "download remote file and store it in a local directory",
 		Args:  cobra.MaximumNArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			src, err := url.Parse(opts.remoteURL)
+			src, err := url.ParseRequestURI(opts.remoteURL)
 			if err != nil {
-				return err
+				return fmt.Errorf("invalid remote url: %v", err)
 			}
 
 			downloader, err := download.NewDownloader(

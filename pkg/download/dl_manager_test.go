@@ -22,7 +22,7 @@ func TestNewDownloadManager(t *testing.T) {
 		downloader, err := NewDownloader("/tmp/xxy/", "https://httpbin.org/range/512", WithLogger(log))
 		if assert.NoError(t, err) {
 			defer t.Cleanup(func() {
-				// os.RemoveAll("/tmp/xx/")
+				_ = os.RemoveAll("/tmp/xxy/")
 			})
 
 			dlManager := NewDownloadManager(downloader, DefaultRetryPolicy())
@@ -43,7 +43,7 @@ func TestNewDownloadManager(t *testing.T) {
 		downloader, err := NewDownloader("/tmp/xx/", server.URL)
 		if assert.NoError(t, err) {
 			defer t.Cleanup(func() {
-				os.RemoveAll("/tmp/xx/")
+				_ = os.RemoveAll("/tmp/xx/")
 			})
 
 			dlManager := NewDownloadManager(downloader, DefaultRetryPolicy())

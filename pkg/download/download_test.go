@@ -131,7 +131,7 @@ func TestNewDownloader(t *testing.T) {
 				filesize:         12,
 				gotTotalSegments: 2,
 				gotSegmentSize:   2,
-				wantErr:          &InvalidParamError{param: "TotalSegments, SegmentSize", message: "these two properties are mutually exclusive"},
+				wantErr:          &InvalidParamError{param: "TotalSegments, SegmentSize", message: "these two properties are mutually exclusive, set only one of them"},
 			},
 		}
 

@@ -8,9 +8,8 @@ import (
 
 func newRoot() *cobra.Command {
 	var rootCmd = &cobra.Command{
-		Short:        "A robust solution for downloading files over the internet",
-		Use:          "dr download --url [ADDRESS] --out [DIRECTORY]",
-		SilenceUsage: true,
+		Short: "A robust solution for downloading files over the internet",
+		Use:   "dr download --url [ADDRESS] --out [DIRECTORY]",
 	}
 
 	rootCmd.AddCommand(newDownloadCmd(os.Stdout))
