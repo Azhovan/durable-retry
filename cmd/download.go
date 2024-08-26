@@ -42,11 +42,15 @@ func newDownloadCmd(output io.Writer) *cobra.Command {
 			}
 
 			dm := download.NewDownloadManager(downloader, download.DefaultRetryPolicy())
-			return dm.Download(
-				cmd.Context(),
-				download.WithSegmentSize(opts.segSize),
-				download.WithNumberOfSegments(opts.segCount),
-			)
+
+			fmt.Println("Downloading ...")
+			err = dm.Download(cmd.Context(), download.WithSegmentSize(opts.segSize), download.WithNumberOfSegments(opts.segCount))
+			if err != nil {
+				return err
+			}
+			fmt.Println("Download completed.")
+
+			return nil
 		},
 	}
 
