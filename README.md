@@ -55,4 +55,5 @@ Contributions are welcome! For details on how to contribute, please refer to our
 ## Roadmap
 
 * Implementing a progress bar
+* Adjust segment sizes dynamically based on real-time download speeds and network conditions.
 
