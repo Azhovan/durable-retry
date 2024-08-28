@@ -54,6 +54,11 @@ Contributions are welcome! For details on how to contribute, please refer to our
 
 ## Roadmap
 
-* Implementing a progress bar
+* Implementing a progress bar.
 * Adjust segment sizes dynamically based on real-time download speeds and network conditions.
+* Allow users to pause and resume downloads at any time.
+* Enable users to schedule downloads for specific times.
+* Allow users to limit the download speed to avoid saturating the network.
+* Provide options to manage a queue of downloads.
+* 
 
