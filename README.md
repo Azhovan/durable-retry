@@ -60,5 +60,5 @@ Contributions are welcome! For details on how to contribute, please refer to our
 * Enable users to schedule downloads for specific times.
 * Allow users to limit the download speed to avoid saturating the network.
 * Provide options to manage a queue of downloads.
-* 
+* Allow users to configure proxy servers or VPNs.
 
